@@ -80,6 +80,39 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "versionCheck.updateAllInSection",
+      async (
+        uri: vscode.Uri | string,
+        providerId: string,
+        updates: Array<{ info: PackageInfo; latestVersion: string | undefined }>
+      ) => {
+        const provider = enabledProviders.find((item) => item.id === providerId);
+        if (!provider || !updates.length) {
+          return;
+        }
+        const documentUri = uri instanceof vscode.Uri ? uri : vscode.Uri.parse(String(uri));
+        const edit = new vscode.WorkspaceEdit();
+
+        const sortedUpdates = [...updates].sort(
+          (a, b) => b.info.range.start.line - a.info.range.start.line
+        );
+
+        for (const { info, latestVersion } of sortedUpdates) {
+          if (!latestVersion) {
+            continue;
+          }
+          const newVersion = provider.formatUpdatedVersion(info.currentVersion, latestVersion);
+          edit.replace(documentUri, coerceRange(info.range), newVersion);
+        }
+
+        await vscode.workspace.applyEdit(edit);
+        codeLensProvider.refresh();
+      }
+    )
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("versionCheck.refresh", () => {
       cache.clear();
       codeLensProvider.refresh();

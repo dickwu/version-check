@@ -6,6 +6,9 @@ exports.compareSemver = compareSemver;
 exports.shouldIgnoreVersion = shouldIgnoreVersion;
 exports.isVersionOutdated = isVersionOutdated;
 exports.formatUpdatedVersion = formatUpdatedVersion;
+exports.isPrerelease = isPrerelease;
+exports.filterStableVersions = filterStableVersions;
+exports.pickLatestStable = pickLatestStable;
 const SEMVER_REGEX = /(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/;
 function parseSemver(input) {
     const match = SEMVER_REGEX.exec(input);
@@ -81,5 +84,37 @@ function formatUpdatedVersion(currentVersion, latestVersion) {
         ? `v${latestTrimmed}`
         : latestTrimmed;
     return `${prefix}${latest}`;
+}
+function isPrerelease(version, patterns) {
+    if (!patterns.length) {
+        return false;
+    }
+    const lower = version.toLowerCase();
+    return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+}
+function filterStableVersions(versions, patterns) {
+    if (!patterns.length) {
+        return versions;
+    }
+    return versions.filter((v) => !isPrerelease(v, patterns));
+}
+function pickLatestStable(versions, patterns) {
+    const stable = filterStableVersions(versions, patterns);
+    if (!stable.length) {
+        return null;
+    }
+    let best = null;
+    let bestSemver = null;
+    for (const version of stable) {
+        const semver = extractSemver(version);
+        if (!semver) {
+            continue;
+        }
+        if (!bestSemver || compareSemver(bestSemver, semver) < 0) {
+            bestSemver = semver;
+            best = version;
+        }
+    }
+    return best;
 }
 //# sourceMappingURL=semver.js.map

@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
@@ -26,6 +26,10 @@
       {
         "command": "versionCheck.updateDependency",
         "title": "Version Check: Update Dependency"
+      },
+      {
+        "command": "versionCheck.updateAllInSection",
+        "title": "Version Check: Update All in Section"
       },
       {
         "command": "versionCheck.refresh",
@@ -60,6 +64,14 @@
           "type": "boolean",
           "default": true,
           "description": "Enable Composer (composer.json) version checks."
+        },
+        "versionCheck.ignorePrereleasePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["alpha", "beta", "canary", "dev", "experimental", "insiders", "next", "nightly", "preview", "rc"],
+          "description": "Prerelease patterns to ignore when checking for latest version (case-insensitive)."
         }
       }
     }

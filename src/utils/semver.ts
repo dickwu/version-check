@@ -87,3 +87,40 @@ export function formatUpdatedVersion(currentVersion: string, latestVersion: stri
     : latestTrimmed;
   return `${prefix}${latest}`;
 }
+
+export function isPrerelease(version: string, patterns: string[]): boolean {
+  if (!patterns.length) {
+    return false;
+  }
+  const lower = version.toLowerCase();
+  return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
+}
+
+export function filterStableVersions(versions: string[], patterns: string[]): string[] {
+  if (!patterns.length) {
+    return versions;
+  }
+  return versions.filter((v) => !isPrerelease(v, patterns));
+}
+
+export function pickLatestStable(versions: string[], patterns: string[]): string | null {
+  const stable = filterStableVersions(versions, patterns);
+  if (!stable.length) {
+    return null;
+  }
+
+  let best: string | null = null;
+  let bestSemver: Semver | null = null;
+
+  for (const version of stable) {
+    const semver = extractSemver(version);
+    if (!semver) {
+      continue;
+    }
+    if (!bestSemver || compareSemver(bestSemver, semver) < 0) {
+      bestSemver = semver;
+      best = version;
+    }
+  }
+  return best;
+}

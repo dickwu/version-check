@@ -13,8 +13,20 @@ class NpmProvider {
     parseDocument(document) {
         return (0, parser_1.parseNpmDependencies)(document);
     }
-    async getLatestVersion(packageName) {
-        return (0, registry_1.fetchLatestNpmVersion)(packageName);
+    async getLatestVersion(packageName, ignorePatterns) {
+        const latest = await (0, registry_1.fetchLatestNpmVersion)(packageName);
+        if (!latest || !ignorePatterns?.length) {
+            return latest;
+        }
+        if (!(0, semver_1.isPrerelease)(latest, ignorePatterns)) {
+            return latest;
+        }
+        const versions = await (0, registry_1.fetchNpmVersions)(packageName);
+        if (!versions) {
+            return null;
+        }
+        const stable = versions.filter((v) => !(0, semver_1.isPrerelease)(v, ignorePatterns));
+        return pickLatest(stable);
     }
     async getAvailableVersions(packageName) {
         return (0, registry_1.fetchNpmVersions)(packageName);
@@ -27,4 +39,19 @@ class NpmProvider {
     }
 }
 exports.NpmProvider = NpmProvider;
+const semver_2 = require("../../utils/semver");
+function pickLatest(versions) {
+    let best = null;
+    let bestSemver = null;
+    for (const v of versions) {
+        const semver = (0, semver_2.extractSemver)(v);
+        if (!semver)
+            continue;
+        if (!bestSemver || (0, semver_2.compareSemver)(bestSemver, semver) < 0) {
+            bestSemver = semver;
+            best = v;
+        }
+    }
+    return best;
+}
 //# sourceMappingURL=index.js.map

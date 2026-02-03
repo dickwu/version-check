@@ -1,9 +1,15 @@
 import * as vscode from "vscode";
 import { VersionCache } from "./cache";
-import { LanguageProvider } from "./types";
+import { LanguageProvider, PackageInfo } from "./types";
 import { isVersionOutdated } from "../utils/semver";
 
 const CACHE_NOT_FOUND = "__NOT_FOUND__";
+
+interface ResolvedPackage {
+  info: PackageInfo;
+  latestVersion: string | undefined;
+  notFound: boolean;
+}
 
 export class VersionCodeLensProvider implements vscode.CodeLensProvider {
   private emitter = new vscode.EventEmitter<void>();
@@ -19,6 +25,11 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
         this.refresh();
       }
     });
+  }
+
+  private getIgnorePatterns(): string[] {
+    const config = vscode.workspace.getConfiguration("versionCheck");
+    return config.get<string[]>("ignorePrereleasePatterns", []);
   }
 
   dispose() {
@@ -40,6 +51,8 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
     }
     const packages = provider.parseDocument(document);
     const lenses: vscode.CodeLens[] = [];
+    const sectionUpdates = new Map<string, { packages: ResolvedPackage[]; firstLine: number }>();
+    const ignorePatterns = this.getIgnorePatterns();
 
     for (const info of packages) {
       if (token.isCancellationRequested) {
@@ -55,7 +68,7 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
 
       if (!latestVersion) {
         try {
-          latestVersion = await provider.getLatestVersion(info.name) ?? undefined;
+          latestVersion = await provider.getLatestVersion(info.name, ignorePatterns) ?? undefined;
         } catch {
           latestVersion = undefined;
         }
@@ -93,11 +106,43 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
 
       info.latestVersion = latestVersion;
       info.updateAvailable = true;
+
+      const section = info.dependencyGroup ?? "default";
+      if (!sectionUpdates.has(section)) {
+        sectionUpdates.set(section, { packages: [], firstLine: info.range.start.line });
+      }
+      const sectionData = sectionUpdates.get(section)!;
+      sectionData.packages.push({ info, latestVersion, notFound: false });
+      if (info.range.start.line < sectionData.firstLine) {
+        sectionData.firstLine = info.range.start.line;
+      }
+
       lenses.push(
         new vscode.CodeLens(info.range, {
           title: `Choose version (latest ${latestVersion})`,
           command: "versionCheck.updateDependency",
           arguments: [document.uri, provider.id, info, latestVersion]
+        })
+      );
+    }
+
+    for (const [section, data] of sectionUpdates) {
+      if (data.packages.length < 2) {
+        continue;
+      }
+      const updateAllRange = new vscode.Range(
+        new vscode.Position(data.firstLine, 0),
+        new vscode.Position(data.firstLine, 0)
+      );
+      const updates = data.packages.map((pkg) => ({
+        info: pkg.info,
+        latestVersion: pkg.latestVersion
+      }));
+      lenses.push(
+        new vscode.CodeLens(updateAllRange, {
+          title: `⬆ Update all ${data.packages.length} in ${section}`,
+          command: "versionCheck.updateAllInSection",
+          arguments: [document.uri, provider.id, updates]
         })
       );
     }
