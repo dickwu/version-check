@@ -1,0 +1,10 @@
+.vscode/**
+src/**
+**/*.map
+node_modules/**
+!node_modules/smol-toml/**
+!node_modules/jsonc-parser/**
+bun.lock
+tsconfig.json
+.gitignore
+.npmrc

@@ -1,0 +1,81 @@
+{
+  "name": "version-check",
+  "displayName": "Version Check",
+  "description": "Check dependency versions and update with one click.",
+  "version": "0.1.0",
+  "publisher": "PeilinWu",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:dickwu/version-check.git"
+  },
+  "engines": {
+    "vscode": "^1.105.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/package.json",
+    "workspaceContains:**/Cargo.toml",
+    "workspaceContains:**/go.mod",
+    "workspaceContains:**/composer.json"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "versionCheck.updateDependency",
+        "title": "Version Check: Update Dependency"
+      },
+      {
+        "command": "versionCheck.refresh",
+        "title": "Version Check: Refresh"
+      }
+    ],
+    "configuration": {
+      "title": "Version Check",
+      "properties": {
+        "versionCheck.cacheTtlSeconds": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "description": "Cache TTL for registry responses in seconds."
+        },
+        "versionCheck.providers.npm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable npm (package.json) version checks."
+        },
+        "versionCheck.providers.cargo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cargo (Cargo.toml) version checks."
+        },
+        "versionCheck.providers.go": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Go (go.mod) version checks."
+        },
+        "versionCheck.providers.composer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Composer (composer.json) version checks."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -p ./ -w"
+  },
+  "dependencies": {
+    "smol-toml": "1.6.0",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "@types/vscode": "^1.105.1",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  }
+}
