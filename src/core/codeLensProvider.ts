@@ -3,14 +3,28 @@ import { VersionCache } from "./cache";
 import { LanguageProvider } from "./types";
 import { isVersionOutdated } from "../utils/semver";
 
+const CACHE_NOT_FOUND = "__NOT_FOUND__";
+
 export class VersionCodeLensProvider implements vscode.CodeLensProvider {
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this.emitter.event;
+  private changeListener: vscode.Disposable | undefined;
 
   constructor(
     private providers: LanguageProvider[],
     private cache: VersionCache
-  ) { }
+  ) {
+    this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+      if (this.findProvider(e.document.fileName)) {
+        this.refresh();
+      }
+    });
+  }
+
+  dispose() {
+    this.changeListener?.dispose();
+    this.emitter.dispose();
+  }
 
   refresh() {
     this.emitter.fire();
@@ -37,6 +51,8 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
 
       const cacheKey = `${provider.id}:${info.name}`;
       let latestVersion = this.cache.get(cacheKey);
+      let notFound = false;
+
       if (!latestVersion) {
         try {
           latestVersion = await provider.getLatestVersion(info.name) ?? undefined;
@@ -45,7 +61,25 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
         }
         if (latestVersion) {
           this.cache.set(cacheKey, latestVersion);
+        } else {
+          this.cache.set(cacheKey, CACHE_NOT_FOUND);
+          notFound = true;
         }
+      } else if (latestVersion === CACHE_NOT_FOUND) {
+        notFound = true;
+        latestVersion = undefined;
+      }
+
+      if (notFound) {
+        info.updateAvailable = false;
+        lenses.push(
+          new vscode.CodeLens(info.range, {
+            title: `⚠ Version not found for ${info.name}`,
+            command: "versionCheck.updateDependency",
+            arguments: [document.uri, provider.id, info, undefined]
+          })
+        );
+        continue;
       }
 
       if (!latestVersion) {

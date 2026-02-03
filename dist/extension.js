@@ -67,6 +67,7 @@ function activate(context) {
     const cache = new cache_1.VersionCache(ttlSeconds * 1000);
     const codeLensProvider = new codeLensProvider_1.VersionCodeLensProvider(enabledProviders, cache);
     const codeActionProvider = new codeActionProvider_1.VersionCodeActionProvider(enabledProviders);
+    context.subscriptions.push({ dispose: () => codeLensProvider.dispose() });
     for (const provider of enabledProviders) {
         const selector = PROVIDER_SELECTORS[provider.id];
         if (!selector) {

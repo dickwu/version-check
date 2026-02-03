@@ -36,12 +36,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VersionCodeLensProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const semver_1 = require("../utils/semver");
+const CACHE_NOT_FOUND = "__NOT_FOUND__";
 class VersionCodeLensProvider {
     constructor(providers, cache) {
         this.providers = providers;
         this.cache = cache;
         this.emitter = new vscode.EventEmitter();
         this.onDidChangeCodeLenses = this.emitter.event;
+        this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
+            if (this.findProvider(e.document.fileName)) {
+                this.refresh();
+            }
+        });
+    }
+    dispose() {
+        this.changeListener?.dispose();
+        this.emitter.dispose();
     }
     refresh() {
         this.emitter.fire();
@@ -62,6 +72,7 @@ class VersionCodeLensProvider {
             }
             const cacheKey = `${provider.id}:${info.name}`;
             let latestVersion = this.cache.get(cacheKey);
+            let notFound = false;
             if (!latestVersion) {
                 try {
                     latestVersion = await provider.getLatestVersion(info.name) ?? undefined;
@@ -72,6 +83,23 @@ class VersionCodeLensProvider {
                 if (latestVersion) {
                     this.cache.set(cacheKey, latestVersion);
                 }
+                else {
+                    this.cache.set(cacheKey, CACHE_NOT_FOUND);
+                    notFound = true;
+                }
+            }
+            else if (latestVersion === CACHE_NOT_FOUND) {
+                notFound = true;
+                latestVersion = undefined;
+            }
+            if (notFound) {
+                info.updateAvailable = false;
+                lenses.push(new vscode.CodeLens(info.range, {
+                    title: `⚠ Version not found for ${info.name}`,
+                    command: "versionCheck.updateDependency",
+                    arguments: [document.uri, provider.id, info, undefined]
+                }));
+                continue;
             }
             if (!latestVersion) {
                 continue;

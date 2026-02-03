@@ -37,6 +37,8 @@ export function activate(context: vscode.ExtensionContext) {
   const codeLensProvider = new VersionCodeLensProvider(enabledProviders, cache);
   const codeActionProvider = new VersionCodeActionProvider(enabledProviders);
 
+  context.subscriptions.push({ dispose: () => codeLensProvider.dispose() });
+
   for (const provider of enabledProviders) {
     const selector = PROVIDER_SELECTORS[provider.id];
     if (!selector) {
