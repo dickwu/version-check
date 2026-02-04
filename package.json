@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
