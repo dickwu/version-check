@@ -37,6 +37,18 @@ exports.parseComposerDependencies = parseComposerDependencies;
 const vscode = __importStar(require("vscode"));
 const jsonc_parser_1 = require("jsonc-parser");
 const DEP_SECTIONS = ["require", "require-dev"];
+/**
+ * Check if package name is a platform requirement (not a real Packagist package)
+ * Platform packages: php, ext-*, lib-*, hhvm, composer-*
+ */
+function isPlatformPackage(name) {
+    const lowerName = name.toLowerCase();
+    return (lowerName === "php" ||
+        lowerName === "hhvm" ||
+        lowerName.startsWith("ext-") ||
+        lowerName.startsWith("lib-") ||
+        lowerName.startsWith("composer-"));
+}
 function parseComposerDependencies(document) {
     const text = document.getText();
     const root = (0, jsonc_parser_1.parseTree)(text);
@@ -61,6 +73,10 @@ function parseComposerDependencies(document) {
             const currentVersion = String(valueNode.value ?? "");
             const range = valueNodeRange(document, valueNode);
             if (!name || !currentVersion || !range) {
+                continue;
+            }
+            // Skip platform packages (php, ext-*, lib-*, hhvm, composer-*)
+            if (isPlatformPackage(name)) {
                 continue;
             }
             results.push({
