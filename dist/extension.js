@@ -117,7 +117,7 @@ function activate(context) {
     }));
     context.subscriptions.push(vscode.commands.registerCommand("versionCheck.refresh", () => {
         cache.clear();
-        codeLensProvider.refresh();
+        codeLensProvider.fullRefresh();
     }));
 }
 function deactivate() { }
@@ -127,49 +127,76 @@ function coerceRange(range) {
     }
     return new vscode.Range(new vscode.Position(range.start.line, range.start.character), new vscode.Position(range.end.line, range.end.character));
 }
+function getIgnorePatterns() {
+    const config = vscode.workspace.getConfiguration("versionCheck");
+    return config.get("ignorePrereleasePatterns", []);
+}
 async function pickVersion(provider, info, latestHint) {
-    let available = null;
-    try {
-        available = await provider.getAvailableVersions(info.name);
-    }
-    catch {
-        available = null;
-    }
-    const sorted = sortVersionsDesc(available ?? []);
+    const ignorePatterns = getIgnorePatterns();
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.placeholder = `Select version for ${info.name}`;
+    quickPick.matchOnDescription = true;
     let latest = latestHint;
-    if (!latest && sorted.length) {
-        latest = sorted[0];
-    }
-    if (latest && !sorted.includes(latest)) {
-        sorted.unshift(latest);
-    }
-    if (!sorted.length) {
-        return promptVersionInput(info, latest);
-    }
-    const items = [
-        {
-            label: "Custom...",
-            description: "Enter version manually"
+    let available = undefined;
+    let closed = false;
+    const updateItems = () => {
+        quickPick.items = buildVersionPickItems(info, latest, available);
+    };
+    updateItems();
+    quickPick.busy = true;
+    const latestPromise = latest
+        ? Promise.resolve(latest)
+        : provider.getLatestVersion(info.name, ignorePatterns).catch(() => null);
+    const availablePromise = provider.getAvailableVersions(info.name).catch(() => null);
+    latestPromise.then((value) => {
+        if (closed || !value || value === latest) {
+            return;
         }
-    ];
-    for (const version of sorted) {
-        items.push({
-            label: version,
-            description: describeVersion(version, info.currentVersion, latest),
-            version
-        });
-    }
-    const pick = await vscode.window.showQuickPick(items, {
-        placeHolder: `Select version for ${info.name}`,
-        matchOnDescription: true
+        latest = value;
+        updateItems();
     });
-    if (!pick) {
-        return null;
-    }
-    if (!pick.version) {
-        return promptVersionInput(info, latest);
-    }
-    return pick.version;
+    availablePromise.then((versions) => {
+        if (closed) {
+            return;
+        }
+        available = versions;
+        updateItems();
+    });
+    Promise.allSettled([latestPromise, availablePromise]).then(() => {
+        if (!closed) {
+            quickPick.busy = false;
+        }
+    });
+    return new Promise((resolve) => {
+        quickPick.onDidAccept(async () => {
+            const selection = quickPick.selectedItems[0];
+            if (!selection) {
+                return;
+            }
+            closed = true;
+            quickPick.hide();
+            quickPick.dispose();
+            if (selection.action === "custom") {
+                const value = await promptVersionInput(info, latest);
+                resolve(value);
+                return;
+            }
+            if (selection.version) {
+                resolve(selection.version);
+                return;
+            }
+            resolve(null);
+        });
+        quickPick.onDidHide(() => {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            quickPick.dispose();
+            resolve(null);
+        });
+        quickPick.show();
+    });
 }
 async function promptVersionInput(info, latest) {
     const value = await vscode.window.showInputBox({
@@ -194,6 +221,26 @@ function sortVersionsDesc(versions) {
         }
         return b.localeCompare(a);
     });
+}
+function buildVersionPickItems(info, latest, available) {
+    const versions = available?.length ? available : [];
+    const merged = latest ? [...versions, latest] : [...versions];
+    const sorted = sortVersionsDesc(merged);
+    const items = [
+        {
+            label: "Custom...",
+            description: "Enter version manually",
+            action: "custom"
+        }
+    ];
+    for (const version of sorted) {
+        items.push({
+            label: version,
+            description: describeVersion(version, info.currentVersion, latest),
+            version
+        });
+    }
+    return items;
 }
 function describeVersion(version, currentVersion, latest) {
     if (latest && isSameVersion(version, latest)) {

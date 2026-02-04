@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("versionCheck.refresh", () => {
       cache.clear();
-      codeLensProvider.refresh();
+      codeLensProvider.fullRefresh();
     })
   );
 }
