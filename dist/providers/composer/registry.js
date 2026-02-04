@@ -1,17 +1,54 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.setComposerCacheTtl = setComposerCacheTtl;
+exports.clearComposerCache = clearComposerCache;
 exports.fetchLatestComposerVersion = fetchLatestComposerVersion;
 exports.fetchComposerVersions = fetchComposerVersions;
 const http_1 = require("../../utils/http");
 const semver_1 = require("../../utils/semver");
+const latestCache = new Map();
+const versionsCache = new Map();
+let cacheTtlMs = 300000; // 5 minutes default
+function setComposerCacheTtl(ttlMs) {
+    cacheTtlMs = ttlMs;
+}
+function clearComposerCache() {
+    latestCache.clear();
+    versionsCache.clear();
+}
+function getCached(cache, key) {
+    const entry = cache.get(key);
+    if (!entry) {
+        return undefined;
+    }
+    if (Date.now() - entry.timestamp > cacheTtlMs) {
+        cache.delete(key);
+        return undefined;
+    }
+    return entry.value;
+}
+function setCached(cache, key, value) {
+    cache.set(key, { value, timestamp: Date.now() });
+}
 async function fetchLatestComposerVersion(packageName) {
+    const cached = getCached(latestCache, packageName);
+    if (cached !== undefined) {
+        return cached;
+    }
     const versions = await fetchComposerVersions(packageName);
     if (!versions) {
+        setCached(latestCache, packageName, null);
         return null;
     }
-    return pickLatestVersion(versions);
+    const result = pickLatestVersion(versions);
+    setCached(latestCache, packageName, result);
+    return result;
 }
 async function fetchComposerVersions(packageName) {
+    const cached = getCached(versionsCache, packageName);
+    if (cached !== undefined) {
+        return cached;
+    }
     const [vendor, name] = packageName.split("/");
     if (!vendor || !name) {
         return null;
@@ -19,7 +56,9 @@ async function fetchComposerVersions(packageName) {
     const url = `https://packagist.org/packages/${encodeURIComponent(vendor)}/${encodeURIComponent(name)}.json`;
     const response = await (0, http_1.getJson)(url);
     const versions = response.package?.versions ? Object.keys(response.package.versions) : [];
-    return versions.length ? versions : null;
+    const result = versions.length ? versions : null;
+    setCached(versionsCache, packageName, result);
+    return result;
 }
 function pickLatestVersion(versions) {
     let bestVersion = null;

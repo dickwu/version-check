@@ -8,6 +8,10 @@ import { CargoProvider } from "./providers/cargo";
 import { GoProvider } from "./providers/go";
 import { ComposerProvider } from "./providers/composer";
 import { compareSemver, extractSemver } from "./utils/semver";
+import { setNpmCacheTtl, clearNpmCache } from "./providers/npm/registry";
+import { setCargoCacheTtl, clearCargoCache } from "./providers/cargo/registry";
+import { setGoCacheTtl, clearGoCache } from "./providers/go/registry";
+import { setComposerCacheTtl, clearComposerCache } from "./providers/composer/registry";
 
 const PROVIDER_SELECTORS: Record<string, vscode.DocumentSelector> = {
   npm: [{ pattern: "**/package.json" }],
@@ -16,10 +20,25 @@ const PROVIDER_SELECTORS: Record<string, vscode.DocumentSelector> = {
   composer: [{ pattern: "**/composer.json" }]
 };
 
+function setAllRegistryCacheTtl(ttlMs: number) {
+  setNpmCacheTtl(ttlMs);
+  setCargoCacheTtl(ttlMs);
+  setGoCacheTtl(ttlMs);
+  setComposerCacheTtl(ttlMs);
+}
+
+function clearAllRegistryCaches() {
+  clearNpmCache();
+  clearCargoCache();
+  clearGoCache();
+  clearComposerCache();
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("versionCheck");
   const providersConfig = config.get<Record<string, boolean>>("providers", {});
   const ttlSeconds = config.get<number>("cacheTtlSeconds", 300);
+  const ttlMs = ttlSeconds * 1000;
 
   const allProviders: LanguageProvider[] = [
     new NpmProvider(),
@@ -33,7 +52,10 @@ export function activate(context: vscode.ExtensionContext) {
     return enabled !== false;
   });
 
-  const cache = new VersionCache(ttlSeconds * 1000);
+  // Set TTL for all registry caches
+  setAllRegistryCacheTtl(ttlMs);
+
+  const cache = new VersionCache(ttlMs);
   const codeLensProvider = new VersionCodeLensProvider(enabledProviders, cache);
   const codeActionProvider = new VersionCodeActionProvider(enabledProviders);
 
@@ -115,7 +137,16 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("versionCheck.refresh", () => {
       cache.clear();
+      clearAllRegistryCaches();
       codeLensProvider.fullRefresh();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("versionCheck.clearCache", () => {
+      cache.clear();
+      clearAllRegistryCaches();
+      vscode.window.showInformationMessage("Version Check: Cache cleared");
     })
   );
 }

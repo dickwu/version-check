@@ -44,16 +44,33 @@ const cargo_1 = require("./providers/cargo");
 const go_1 = require("./providers/go");
 const composer_1 = require("./providers/composer");
 const semver_1 = require("./utils/semver");
+const registry_1 = require("./providers/npm/registry");
+const registry_2 = require("./providers/cargo/registry");
+const registry_3 = require("./providers/go/registry");
+const registry_4 = require("./providers/composer/registry");
 const PROVIDER_SELECTORS = {
     npm: [{ pattern: "**/package.json" }],
     cargo: [{ pattern: "**/Cargo.toml" }],
     go: [{ pattern: "**/go.mod" }],
     composer: [{ pattern: "**/composer.json" }]
 };
+function setAllRegistryCacheTtl(ttlMs) {
+    (0, registry_1.setNpmCacheTtl)(ttlMs);
+    (0, registry_2.setCargoCacheTtl)(ttlMs);
+    (0, registry_3.setGoCacheTtl)(ttlMs);
+    (0, registry_4.setComposerCacheTtl)(ttlMs);
+}
+function clearAllRegistryCaches() {
+    (0, registry_1.clearNpmCache)();
+    (0, registry_2.clearCargoCache)();
+    (0, registry_3.clearGoCache)();
+    (0, registry_4.clearComposerCache)();
+}
 function activate(context) {
     const config = vscode.workspace.getConfiguration("versionCheck");
     const providersConfig = config.get("providers", {});
     const ttlSeconds = config.get("cacheTtlSeconds", 300);
+    const ttlMs = ttlSeconds * 1000;
     const allProviders = [
         new npm_1.NpmProvider(),
         new cargo_1.CargoProvider(),
@@ -64,7 +81,9 @@ function activate(context) {
         const enabled = providersConfig[provider.id];
         return enabled !== false;
     });
-    const cache = new cache_1.VersionCache(ttlSeconds * 1000);
+    // Set TTL for all registry caches
+    setAllRegistryCacheTtl(ttlMs);
+    const cache = new cache_1.VersionCache(ttlMs);
     const codeLensProvider = new codeLensProvider_1.VersionCodeLensProvider(enabledProviders, cache);
     const codeActionProvider = new codeActionProvider_1.VersionCodeActionProvider(enabledProviders);
     context.subscriptions.push({ dispose: () => codeLensProvider.dispose() });
@@ -117,7 +136,13 @@ function activate(context) {
     }));
     context.subscriptions.push(vscode.commands.registerCommand("versionCheck.refresh", () => {
         cache.clear();
+        clearAllRegistryCaches();
         codeLensProvider.fullRefresh();
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand("versionCheck.clearCache", () => {
+        cache.clear();
+        clearAllRegistryCaches();
+        vscode.window.showInformationMessage("Version Check: Cache cleared");
     }));
 }
 function deactivate() { }
