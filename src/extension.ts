@@ -122,7 +122,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() { }
 
-type VersionPickItem = vscode.QuickPickItem & { version?: string };
+type VersionPickItem = vscode.QuickPickItem & { version?: string; action?: "custom" };
 
 function coerceRange(range: vscode.Range | { start: { line: number; character: number }; end: { line: number; character: number } }): vscode.Range {
   if (range instanceof vscode.Range) {
@@ -134,56 +134,92 @@ function coerceRange(range: vscode.Range | { start: { line: number; character: n
   );
 }
 
+function getIgnorePatterns(): string[] {
+  const config = vscode.workspace.getConfiguration("versionCheck");
+  return config.get<string[]>("ignorePrereleasePatterns", []);
+}
+
 async function pickVersion(
   provider: LanguageProvider,
   info: PackageInfo,
   latestHint?: string
 ): Promise<string | null> {
-  let available: string[] | null = null;
-  try {
-    available = await provider.getAvailableVersions(info.name);
-  } catch {
-    available = null;
-  }
-  const sorted = sortVersionsDesc(available ?? []);
+  const ignorePatterns = getIgnorePatterns();
+  const quickPick = vscode.window.createQuickPick<VersionPickItem>();
+  quickPick.placeholder = `Select version for ${info.name}`;
+  quickPick.matchOnDescription = true;
+
   let latest = latestHint;
-  if (!latest && sorted.length) {
-    latest = sorted[0];
-  }
-  if (latest && !sorted.includes(latest)) {
-    sorted.unshift(latest);
-  }
+  let available: string[] | null | undefined = undefined;
+  let closed = false;
 
-  if (!sorted.length) {
-    return promptVersionInput(info, latest);
-  }
+  const updateItems = () => {
+    quickPick.items = buildVersionPickItems(info, latest, available);
+  };
 
-  const items: VersionPickItem[] = [
-    {
-      label: "Custom...",
-      description: "Enter version manually"
+  updateItems();
+  quickPick.busy = true;
+
+  const latestPromise = latest
+    ? Promise.resolve(latest)
+    : provider.getLatestVersion(info.name, ignorePatterns).catch(() => null);
+  const availablePromise = provider.getAvailableVersions(info.name).catch(() => null);
+
+  latestPromise.then((value) => {
+    if (closed || !value || value === latest) {
+      return;
     }
-  ];
-
-  for (const version of sorted) {
-    items.push({
-      label: version,
-      description: describeVersion(version, info.currentVersion, latest),
-      version
-    });
-  }
-
-  const pick = await vscode.window.showQuickPick(items, {
-    placeHolder: `Select version for ${info.name}`,
-    matchOnDescription: true
+    latest = value;
+    updateItems();
   });
-  if (!pick) {
-    return null;
-  }
-  if (!pick.version) {
-    return promptVersionInput(info, latest);
-  }
-  return pick.version;
+
+  availablePromise.then((versions) => {
+    if (closed) {
+      return;
+    }
+    available = versions;
+    updateItems();
+  });
+
+  Promise.allSettled([latestPromise, availablePromise]).then(() => {
+    if (!closed) {
+      quickPick.busy = false;
+    }
+  });
+
+  return new Promise((resolve) => {
+    quickPick.onDidAccept(async () => {
+      const selection = quickPick.selectedItems[0];
+      if (!selection) {
+        return;
+      }
+      closed = true;
+      quickPick.hide();
+      quickPick.dispose();
+
+      if (selection.action === "custom") {
+        const value = await promptVersionInput(info, latest);
+        resolve(value);
+        return;
+      }
+      if (selection.version) {
+        resolve(selection.version);
+        return;
+      }
+      resolve(null);
+    });
+
+    quickPick.onDidHide(() => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      quickPick.dispose();
+      resolve(null);
+    });
+
+    quickPick.show();
+  });
 }
 
 async function promptVersionInput(
@@ -216,6 +252,34 @@ function sortVersionsDesc(versions: string[]): string[] {
     }
     return b.localeCompare(a);
   });
+}
+
+function buildVersionPickItems(
+  info: PackageInfo,
+  latest: string | undefined,
+  available: string[] | null | undefined
+): VersionPickItem[] {
+  const versions = available?.length ? available : [];
+  const merged = latest ? [...versions, latest] : [...versions];
+  const sorted = sortVersionsDesc(merged);
+
+  const items: VersionPickItem[] = [
+    {
+      label: "Custom...",
+      description: "Enter version manually",
+      action: "custom"
+    }
+  ];
+
+  for (const version of sorted) {
+    items.push({
+      label: version,
+      description: describeVersion(version, info.currentVersion, latest),
+      version
+    });
+  }
+
+  return items;
 }
 
 function describeVersion(
