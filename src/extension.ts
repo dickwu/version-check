@@ -12,12 +12,15 @@ import { setNpmCacheTtl, clearNpmCache } from "./providers/npm/registry";
 import { setCargoCacheTtl, clearCargoCache } from "./providers/cargo/registry";
 import { setGoCacheTtl, clearGoCache } from "./providers/go/registry";
 import { setComposerCacheTtl, clearComposerCache } from "./providers/composer/registry";
+import { DartProvider } from "./providers/dart";
+import { setDartCacheTtl, clearDartCache } from "./providers/dart/registry";
 
 const PROVIDER_SELECTORS: Record<string, vscode.DocumentSelector> = {
   npm: [{ pattern: "**/package.json" }],
   cargo: [{ pattern: "**/Cargo.toml" }],
   go: [{ pattern: "**/go.mod" }],
-  composer: [{ pattern: "**/composer.json" }]
+  composer: [{ pattern: "**/composer.json" }],
+  dart: [{ pattern: "**/pubspec.yaml" }]
 };
 
 function setAllRegistryCacheTtl(ttlMs: number) {
@@ -25,6 +28,7 @@ function setAllRegistryCacheTtl(ttlMs: number) {
   setCargoCacheTtl(ttlMs);
   setGoCacheTtl(ttlMs);
   setComposerCacheTtl(ttlMs);
+  setDartCacheTtl(ttlMs);
 }
 
 function clearAllRegistryCaches() {
@@ -32,6 +36,7 @@ function clearAllRegistryCaches() {
   clearCargoCache();
   clearGoCache();
   clearComposerCache();
+  clearDartCache();
 }
 
 function ensureGlyphMargin() {
@@ -54,7 +59,8 @@ export function activate(context: vscode.ExtensionContext) {
     new NpmProvider(),
     new CargoProvider(),
     new GoProvider(),
-    new ComposerProvider()
+    new ComposerProvider(),
+    new DartProvider()
   ];
 
   const enabledProviders = allProviders.filter((provider) => {

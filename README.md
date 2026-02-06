@@ -1,6 +1,6 @@
 # Version Check
 
-Check dependency versions for npm, Cargo, Go modules, and Composer, and update them with one click via CodeLens or quick fixes.
+Check dependency versions for npm, Cargo, Go modules, Composer, and Dart, and update them with one click via CodeLens or quick fixes.
 
 ## Supported Files
 
@@ -8,6 +8,7 @@ Check dependency versions for npm, Cargo, Go modules, and Composer, and update t
 - `Cargo.toml` (Rust/Cargo)
 - `go.mod` (Go modules)
 - `composer.json` (PHP/Composer)
+- `pubspec.yaml` (Dart/Flutter)
 
 ## Features
 
@@ -35,6 +36,7 @@ Check dependency versions for npm, Cargo, Go modules, and Composer, and update t
 | `versionCheck.providers.cargo` | `true` | Enable Cargo (Cargo.toml) version checks |
 | `versionCheck.providers.go` | `true` | Enable Go (go.mod) version checks |
 | `versionCheck.providers.composer` | `true` | Enable Composer (composer.json) version checks |
+| `versionCheck.providers.dart` | `true` | Enable Dart (pubspec.yaml) version checks |
 | `versionCheck.ignorePrereleasePatterns` | `["alpha", "beta", ...]` | Prerelease patterns to ignore when checking latest version |
 
 ## Caching

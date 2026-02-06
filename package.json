@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
@@ -18,7 +18,8 @@
     "workspaceContains:**/package.json",
     "workspaceContains:**/Cargo.toml",
     "workspaceContains:**/go.mod",
-    "workspaceContains:**/composer.json"
+    "workspaceContains:**/composer.json",
+    "workspaceContains:**/pubspec.yaml"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -68,6 +69,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable Composer (composer.json) version checks."
+        },
+        "versionCheck.providers.dart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Dart (pubspec.yaml) version checks."
         },
         "versionCheck.ignorePrereleasePatterns": {
           "type": "array",
