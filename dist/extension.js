@@ -66,11 +66,19 @@ function clearAllRegistryCaches() {
     (0, registry_3.clearGoCache)();
     (0, registry_4.clearComposerCache)();
 }
+function ensureGlyphMargin() {
+    const editorConfig = vscode.workspace.getConfiguration("editor");
+    const glyphMargin = editorConfig.get("glyphMargin");
+    if (!glyphMargin) {
+        void editorConfig.update("glyphMargin", true, vscode.ConfigurationTarget.Global);
+    }
+}
 function activate(context) {
     const config = vscode.workspace.getConfiguration("versionCheck");
     const providersConfig = config.get("providers", {});
     const ttlSeconds = config.get("cacheTtlSeconds", 300);
     const ttlMs = ttlSeconds * 1000;
+    ensureGlyphMargin();
     const allProviders = [
         new npm_1.NpmProvider(),
         new cargo_1.CargoProvider(),
@@ -84,7 +92,7 @@ function activate(context) {
     // Set TTL for all registry caches
     setAllRegistryCacheTtl(ttlMs);
     const cache = new cache_1.VersionCache(ttlMs);
-    const codeLensProvider = new codeLensProvider_1.VersionCodeLensProvider(enabledProviders, cache);
+    const codeLensProvider = new codeLensProvider_1.VersionCodeLensProvider(enabledProviders, cache, context);
     const codeActionProvider = new codeActionProvider_1.VersionCodeActionProvider(enabledProviders);
     context.subscriptions.push({ dispose: () => codeLensProvider.dispose() });
     for (const provider of enabledProviders) {

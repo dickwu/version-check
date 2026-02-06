@@ -38,9 +38,10 @@ const vscode = __importStar(require("vscode"));
 const semver_1 = require("../utils/semver");
 const CACHE_NOT_FOUND = "__NOT_FOUND__";
 class VersionCodeLensProvider {
-    constructor(providers, cache) {
+    constructor(providers, cache, extensionContext) {
         this.providers = providers;
         this.cache = cache;
+        this.extensionContext = extensionContext;
         this.emitter = new vscode.EventEmitter();
         this.onDidChangeCodeLenses = this.emitter.event;
         /** Cached document states for incremental updates */
@@ -49,6 +50,8 @@ class VersionCodeLensProvider {
         this.changedLines = new Map();
         /** Force full refresh flag per document */
         this.forceFullRefresh = new Set();
+        /** Stored decoration ranges per document for reapplication on editor switch */
+        this.decorationRanges = new Map();
         this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
             if (!this.findProvider(e.document.fileName)) {
                 return;
@@ -77,6 +80,48 @@ class VersionCodeLensProvider {
             }
             this.refresh();
         });
+        this.greenDeco = this.createDotDecoration("resources/gutter-green.svg");
+        this.yellowDeco = this.createDotDecoration("resources/gutter-yellow.svg");
+        this.redDeco = this.createDotDecoration("resources/gutter-red.svg");
+        this.greyDeco = this.createDotDecoration("resources/gutter-grey.svg");
+        this.editorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
+            if (editor) {
+                this.reapplyDecorations(editor);
+            }
+        });
+    }
+    createDotDecoration(relativePath) {
+        const iconPath = this.extensionContext.asAbsolutePath(relativePath);
+        return vscode.window.createTextEditorDecorationType({
+            gutterIconPath: iconPath,
+            gutterIconSize: "60%"
+        });
+    }
+    reapplyDecorations(editor) {
+        const uri = editor.document.uri.toString();
+        const ranges = this.decorationRanges.get(uri);
+        if (!ranges) {
+            editor.setDecorations(this.greenDeco, []);
+            editor.setDecorations(this.yellowDeco, []);
+            editor.setDecorations(this.redDeco, []);
+            editor.setDecorations(this.greyDeco, []);
+            return;
+        }
+        editor.setDecorations(this.greenDeco, ranges.green);
+        editor.setDecorations(this.yellowDeco, ranges.yellow);
+        editor.setDecorations(this.redDeco, ranges.red);
+        editor.setDecorations(this.greyDeco, ranges.grey);
+    }
+    applyDecorations(document, green, yellow, red, grey) {
+        const uri = document.uri.toString();
+        this.decorationRanges.set(uri, { green, yellow, red, grey });
+        const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
+        if (editor) {
+            editor.setDecorations(this.greenDeco, green);
+            editor.setDecorations(this.yellowDeco, yellow);
+            editor.setDecorations(this.redDeco, red);
+            editor.setDecorations(this.greyDeco, grey);
+        }
     }
     /** Invalidate all cached data for lines after a certain point */
     invalidateLinesAfter(uri, afterLine) {
@@ -97,10 +142,16 @@ class VersionCodeLensProvider {
     }
     dispose() {
         this.changeListener?.dispose();
+        this.editorListener?.dispose();
         this.emitter.dispose();
+        this.greenDeco.dispose();
+        this.yellowDeco.dispose();
+        this.redDeco.dispose();
+        this.greyDeco.dispose();
         this.documentStates.clear();
         this.changedLines.clear();
         this.forceFullRefresh.clear();
+        this.decorationRanges.clear();
     }
     refresh() {
         this.emitter.fire();
@@ -110,6 +161,7 @@ class VersionCodeLensProvider {
         for (const uri of this.documentStates.keys()) {
             this.forceFullRefresh.add(uri);
         }
+        this.decorationRanges.clear();
         this.emitter.fire();
     }
     /** Clear state for a specific document */
@@ -117,6 +169,7 @@ class VersionCodeLensProvider {
         this.documentStates.delete(uri);
         this.changedLines.delete(uri);
         this.forceFullRefresh.add(uri);
+        this.decorationRanges.delete(uri);
     }
     async provideCodeLenses(document, token) {
         const provider = this.findProvider(document.fileName);
@@ -128,6 +181,10 @@ class VersionCodeLensProvider {
         const lenses = [];
         const sectionUpdates = new Map();
         const ignorePatterns = this.getIgnorePatterns();
+        const greenRanges = [];
+        const yellowRanges = [];
+        const redRanges = [];
+        const greyRanges = [];
         // Get or create document state
         let state = this.documentStates.get(uri);
         const isFullRefresh = this.forceFullRefresh.has(uri) || !state;
@@ -176,6 +233,8 @@ class VersionCodeLensProvider {
             state.resolvedByLine.set(line, resolved);
             if (resolved.notFound) {
                 info.updateAvailable = false;
+                const decoLine = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
+                greyRanges.push(decoLine);
                 lenses.push(new vscode.CodeLens(info.range, {
                     title: `⚠ Version not found for ${info.name}`,
                     command: "versionCheck.updateDependency",
@@ -184,14 +243,30 @@ class VersionCodeLensProvider {
                 continue;
             }
             if (!resolved.latestVersion) {
+                const decoLine = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
+                greyRanges.push(decoLine);
                 continue;
             }
             const updateAvailable = (0, semver_1.isVersionOutdated)(info.currentVersion, resolved.latestVersion);
+            const decoRange = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
             if (!updateAvailable) {
+                greenRanges.push(decoRange);
+                lenses.push(new vscode.CodeLens(info.range, {
+                    title: `✓ Latest (${resolved.latestVersion})`,
+                    command: "versionCheck.updateDependency",
+                    arguments: [document.uri, provider.id, info, resolved.latestVersion]
+                }));
                 continue;
             }
             info.latestVersion = resolved.latestVersion;
             info.updateAvailable = true;
+            const diffLevel = (0, semver_1.getVersionDiffLevel)(info.currentVersion, resolved.latestVersion);
+            if (diffLevel === "major") {
+                redRanges.push(decoRange);
+            }
+            else {
+                yellowRanges.push(decoRange);
+            }
             const section = info.dependencyGroup ?? "default";
             if (!sectionUpdates.has(section)) {
                 sectionUpdates.set(section, { packages: [], firstLine: info.range.start.line });
@@ -230,6 +305,7 @@ class VersionCodeLensProvider {
                 arguments: [document.uri, provider.id, updates]
             }));
         }
+        this.applyDecorations(document, greenRanges, yellowRanges, redRanges, greyRanges);
         return lenses;
     }
     /** Resolve a single package's latest version */

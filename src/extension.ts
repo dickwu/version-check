@@ -34,11 +34,21 @@ function clearAllRegistryCaches() {
   clearComposerCache();
 }
 
+function ensureGlyphMargin() {
+  const editorConfig = vscode.workspace.getConfiguration("editor");
+  const glyphMargin = editorConfig.get<boolean>("glyphMargin");
+  if (!glyphMargin) {
+    void editorConfig.update("glyphMargin", true, vscode.ConfigurationTarget.Global);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("versionCheck");
   const providersConfig = config.get<Record<string, boolean>>("providers", {});
   const ttlSeconds = config.get<number>("cacheTtlSeconds", 300);
   const ttlMs = ttlSeconds * 1000;
+
+  ensureGlyphMargin();
 
   const allProviders: LanguageProvider[] = [
     new NpmProvider(),
@@ -59,7 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
   const codeLensProvider = new VersionCodeLensProvider(
     enabledProviders,
     cache,
-    context.extensionUri
+    context
   );
   const codeActionProvider = new VersionCodeActionProvider(enabledProviders);
 

@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
@@ -78,11 +78,13 @@
           "description": "Prerelease patterns to ignore when checking for latest version (case-insensitive)."
         }
       }
-    }
+    } 
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -p ./ -w"
+    "watch": "tsc -p ./ -w",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "dependencies": {
     "smol-toml": "1.6.0",
