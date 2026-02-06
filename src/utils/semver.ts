@@ -80,7 +80,7 @@ export function formatUpdatedVersion(currentVersion: string, latestVersion: stri
   const trimmed = currentVersion.trim();
   const latestTrimmed = latestVersion.trim();
   const latestSemver = extractSemver(latestTrimmed);
-  const prefixMatch = latestSemver ? trimmed.match(/^(\\^|~|>=|<=|>|<|=)/) : null;
+  const prefixMatch = latestSemver ? trimmed.match(/^(\^|~|>=|<=|>|<|=)/) : null;
   const prefix = prefixMatch ? prefixMatch[1] : "";
   const latest = trimmed.startsWith("v") && !latestTrimmed.startsWith("v")
     ? `v${latestTrimmed}`
@@ -123,4 +123,24 @@ export function pickLatestStable(versions: string[], patterns: string[]): string
     }
   }
   return best;
+}
+
+export type VersionDiffLevel = "latest" | "major" | "minor" | "patch";
+
+export function getVersionDiffLevel(currentVersion: string, latestVersion: string): VersionDiffLevel {
+  const current = extractSemver(currentVersion);
+  const latest = extractSemver(latestVersion);
+  if (!current || !latest) {
+    return "latest";
+  }
+  if (compareSemver(current, latest) >= 0) {
+    return "latest";
+  }
+  if (current.major !== latest.major) {
+    return "major";
+  }
+  if (current.minor !== latest.minor) {
+    return "minor";
+  }
+  return "patch";
 }

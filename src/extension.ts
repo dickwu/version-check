@@ -56,7 +56,11 @@ export function activate(context: vscode.ExtensionContext) {
   setAllRegistryCacheTtl(ttlMs);
 
   const cache = new VersionCache(ttlMs);
-  const codeLensProvider = new VersionCodeLensProvider(enabledProviders, cache);
+  const codeLensProvider = new VersionCodeLensProvider(
+    enabledProviders,
+    cache,
+    context.extensionUri
+  );
   const codeActionProvider = new VersionCodeActionProvider(enabledProviders);
 
   context.subscriptions.push({ dispose: () => codeLensProvider.dispose() });

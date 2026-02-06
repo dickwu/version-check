@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
@@ -89,9 +89,9 @@
     "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
-    "@types/node": "25.2.0",
+    "@types/node": "25.2.1",
     "@types/vscode": "^1.105.1",
-    "esbuild": "^0.27.2",
+    "esbuild": "0.27.3",
     "typescript": "^5.9.3"
   }
 }

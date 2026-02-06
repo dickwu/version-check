@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { VersionCache } from "./cache";
 import { LanguageProvider, PackageInfo } from "./types";
-import { isVersionOutdated } from "../utils/semver";
+import { isVersionOutdated, getVersionDiffLevel } from "../utils/semver";
 
 const CACHE_NOT_FOUND = "__NOT_FOUND__";
 
@@ -31,9 +31,18 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
   /** Force full refresh flag per document */
   private forceFullRefresh = new Set<string>();
 
+  /** Gutter dot decorations for version status */
+  private greenDeco: vscode.TextEditorDecorationType;
+  private yellowDeco: vscode.TextEditorDecorationType;
+  private redDeco: vscode.TextEditorDecorationType;
+  /** Stored decoration ranges per document for reapplication on editor switch */
+  private decorationRanges = new Map<string, { green: vscode.Range[]; yellow: vscode.Range[]; red: vscode.Range[] }>();
+  private editorListener: vscode.Disposable | undefined;
+
   constructor(
     private providers: LanguageProvider[],
-    private cache: VersionCache
+    private cache: VersionCache,
+    private extensionUri: vscode.Uri
   ) {
     this.changeListener = vscode.workspace.onDidChangeTextDocument((e) => {
       if (!this.findProvider(e.document.fileName)) {
@@ -68,6 +77,57 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
 
       this.refresh();
     });
+
+    this.greenDeco = this.createDotDecoration("resources/gutter-green.svg");
+    this.yellowDeco = this.createDotDecoration("resources/gutter-yellow.svg");
+    this.redDeco = this.createDotDecoration("resources/gutter-red.svg");
+
+    this.editorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        this.reapplyDecorations(editor);
+      }
+    });
+  }
+
+  private createDotDecoration(relativePath: string): vscode.TextEditorDecorationType {
+    const iconPath = vscode.Uri.joinPath(this.extensionUri, relativePath);
+    return vscode.window.createTextEditorDecorationType({
+      gutterIconPath: iconPath,
+      gutterIconSize: "contain",
+      isWholeLine: true
+    });
+  }
+
+  private reapplyDecorations(editor: vscode.TextEditor) {
+    const uri = editor.document.uri.toString();
+    const ranges = this.decorationRanges.get(uri);
+    if (!ranges) {
+      editor.setDecorations(this.greenDeco, []);
+      editor.setDecorations(this.yellowDeco, []);
+      editor.setDecorations(this.redDeco, []);
+      return;
+    }
+    editor.setDecorations(this.greenDeco, ranges.green);
+    editor.setDecorations(this.yellowDeco, ranges.yellow);
+    editor.setDecorations(this.redDeco, ranges.red);
+  }
+
+  private applyDecorations(
+    document: vscode.TextDocument,
+    green: vscode.Range[],
+    yellow: vscode.Range[],
+    red: vscode.Range[]
+  ) {
+    const uri = document.uri.toString();
+    this.decorationRanges.set(uri, { green, yellow, red });
+    const editor = vscode.window.visibleTextEditors.find(
+      (e) => e.document.uri.toString() === uri
+    );
+    if (editor) {
+      editor.setDecorations(this.greenDeco, green);
+      editor.setDecorations(this.yellowDeco, yellow);
+      editor.setDecorations(this.redDeco, red);
+    }
   }
 
   /** Invalidate all cached data for lines after a certain point */
@@ -91,10 +151,15 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
 
   dispose() {
     this.changeListener?.dispose();
+    this.editorListener?.dispose();
     this.emitter.dispose();
+    this.greenDeco.dispose();
+    this.yellowDeco.dispose();
+    this.redDeco.dispose();
     this.documentStates.clear();
     this.changedLines.clear();
     this.forceFullRefresh.clear();
+    this.decorationRanges.clear();
   }
 
   refresh() {
@@ -106,6 +171,7 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
     for (const uri of this.documentStates.keys()) {
       this.forceFullRefresh.add(uri);
     }
+    this.decorationRanges.clear();
     this.emitter.fire();
   }
 
@@ -114,6 +180,7 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
     this.documentStates.delete(uri);
     this.changedLines.delete(uri);
     this.forceFullRefresh.add(uri);
+    this.decorationRanges.delete(uri);
   }
 
   async provideCodeLenses(
@@ -130,6 +197,9 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
     const lenses: vscode.CodeLens[] = [];
     const sectionUpdates = new Map<string, { packages: ResolvedPackage[]; firstLine: number }>();
     const ignorePatterns = this.getIgnorePatterns();
+    const greenRanges: vscode.Range[] = [];
+    const yellowRanges: vscode.Range[] = [];
+    const redRanges: vscode.Range[] = [];
 
     // Get or create document state
     let state = this.documentStates.get(uri);
@@ -203,12 +273,31 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
       }
 
       const updateAvailable = isVersionOutdated(info.currentVersion, resolved.latestVersion);
+      const decoRange = info.range.isEmpty
+        ? new vscode.Range(line, 0, line, 0)
+        : info.range;
+
       if (!updateAvailable) {
+        greenRanges.push(decoRange);
+        lenses.push(
+          new vscode.CodeLens(info.range, {
+            title: `✓ Latest (${resolved.latestVersion})`,
+            command: "versionCheck.updateDependency",
+            arguments: [document.uri, provider.id, info, resolved.latestVersion]
+          })
+        );
         continue;
       }
 
       info.latestVersion = resolved.latestVersion;
       info.updateAvailable = true;
+
+      const diffLevel = getVersionDiffLevel(info.currentVersion, resolved.latestVersion);
+      if (diffLevel === "major") {
+        redRanges.push(decoRange);
+      } else {
+        yellowRanges.push(decoRange);
+      }
 
       const section = info.dependencyGroup ?? "default";
       if (!sectionUpdates.has(section)) {
@@ -259,6 +348,8 @@ export class VersionCodeLensProvider implements vscode.CodeLensProvider {
         })
       );
     }
+
+    this.applyDecorations(document, greenRanges, yellowRanges, redRanges);
 
     return lenses;
   }
