@@ -45,7 +45,7 @@ export function parseCargoDependencies(document: vscode.TextDocument): PackageIn
       for (const section of SECTION_KEYS) {
         const sectionData = (targetData as Record<string, unknown>)[section];
         if (sectionData && typeof sectionData === "object") {
-          const sectionKey = `target.${targetName}.${section}`;
+          const sectionKey = `target.${normalizeTargetName(targetName)}.${section}`;
           collectDependencies(sectionData as Record<string, unknown>, sectionKey, rangeMap, results);
         }
       }
@@ -246,7 +246,8 @@ function normalizeSection(sectionName: string): string | null {
   // Target-specific dependencies: target.'cfg(...)'.dependencies or target.x86_64-unknown-linux-gnu.dependencies
   const targetMatch = sectionName.match(/^target\.(.+)\.(dependencies|dev-dependencies|build-dependencies)$/);
   if (targetMatch) {
-    return sectionName; // Return full section name for target-specific
+    const [, targetName, section] = targetMatch;
+    return `target.${normalizeTargetName(targetName)}.${section}`;
   }
   return null;
 }
@@ -270,4 +271,15 @@ function parsePackageSection(sectionName: string): { section: string; name: stri
     }
   }
   return null;
+}
+
+function normalizeTargetName(targetName: string): string {
+  const trimmed = targetName.trim();
+  if (
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith("\"") && trimmed.endsWith("\""))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 }

@@ -73,7 +73,7 @@ function parseCargoDependencies(document) {
             for (const section of SECTION_KEYS) {
                 const sectionData = targetData[section];
                 if (sectionData && typeof sectionData === "object") {
-                    const sectionKey = `target.${targetName}.${section}`;
+                    const sectionKey = `target.${normalizeTargetName(targetName)}.${section}`;
                     collectDependencies(sectionData, sectionKey, rangeMap, results);
                 }
             }
@@ -238,7 +238,8 @@ function normalizeSection(sectionName) {
     // Target-specific dependencies: target.'cfg(...)'.dependencies or target.x86_64-unknown-linux-gnu.dependencies
     const targetMatch = sectionName.match(/^target\.(.+)\.(dependencies|dev-dependencies|build-dependencies)$/);
     if (targetMatch) {
-        return sectionName; // Return full section name for target-specific
+        const [, targetName, section] = targetMatch;
+        return `target.${normalizeTargetName(targetName)}.${section}`;
     }
     return null;
 }
@@ -261,5 +262,13 @@ function parsePackageSection(sectionName) {
         }
     }
     return null;
+}
+function normalizeTargetName(targetName) {
+    const trimmed = targetName.trim();
+    if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+        (trimmed.startsWith("\"") && trimmed.endsWith("\""))) {
+        return trimmed.slice(1, -1);
+    }
+    return trimmed;
 }
 //# sourceMappingURL=parser.js.map
