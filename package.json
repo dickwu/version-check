@@ -2,8 +2,9 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "publisher": "PeilinWu",
+  "icon": "resources/icon.png",
   "repository": {
     "type": "git",
     "url": "git@github.com:dickwu/version-check.git"
