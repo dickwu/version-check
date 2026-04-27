@@ -52,7 +52,7 @@ jobs:
       - name: Package extension
         env:
           PKG_VERSION: ${{ steps.pkg.outputs.version }}
-        run: bun x @vscode/vsce package --no-dependencies --out "version-check-$PKG_VERSION.vsix"
+        run: bun x @vscode/vsce package --out "version-check-$PKG_VERSION.vsix"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
@@ -72,8 +72,7 @@ jobs:
             echo "::warning::VSCE_PAT secret not set; skipping VS Code Marketplace"
             exit 0
           fi
-          bun x @vscode/vsce publish --packagePath "version-check-$PKG_VERSION.vsix" --pat "$VSCE_PAT" --no-dependencies
-
+          bun x @vscode/vsce publish --packagePath "version-check-$PKG_VERSION.vsix" --pat "$VSCE_PAT"
       - name: Publish to Open VSX
         if: ${{ github.event_name == 'push' || inputs.target == 'both' || inputs.target == 'openvsx' }}
         continue-on-error: true

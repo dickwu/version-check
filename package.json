@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "publisher": "PeilinWu",
   "icon": "resources/icon.png",
   "repository": {
