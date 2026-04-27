@@ -2,7 +2,7 @@
   "name": "version-check",
   "displayName": "Version Check",
   "description": "Check dependency versions and update with one click.",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "publisher": "PeilinWu",
   "repository": {
     "type": "git",
@@ -93,13 +93,13 @@
     "publish": "vsce publish"
   },
   "dependencies": {
-    "smol-toml": "1.6.0",
+    "smol-toml": "1.6.1",
     "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
-    "@types/node": "25.2.2",
-    "@types/vscode": "^1.105.1",
-    "esbuild": "0.27.3",
-    "typescript": "^5.9.3"
+    "@types/node": "25.6.0",
+    "@types/vscode": "1.105.0",
+    "esbuild": "0.28.0",
+    "typescript": "^6.0.3"
   }
 }

@@ -108,13 +108,19 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
         const documentUri = uri instanceof vscode.Uri ? uri : vscode.Uri.parse(String(uri));
-        const chosenVersion = await pickVersion(provider, info, latest);
+        const document = await vscode.workspace.openTextDocument(documentUri);
+        const fresh = findFreshPackage(provider, document, info);
+        if (!fresh) {
+          return;
+        }
+        const chosenVersion = await pickVersion(provider, fresh, latest);
         if (!chosenVersion) {
           return;
         }
-        const newVersion = provider.formatUpdatedVersion(info.currentVersion, chosenVersion);
+        const latestFresh = findFreshPackage(provider, document, info) ?? fresh;
+        const newVersion = provider.formatUpdatedVersion(latestFresh.currentVersion, chosenVersion);
         const edit = new vscode.WorkspaceEdit();
-        edit.replace(documentUri, coerceRange(info.range), newVersion);
+        edit.replace(documentUri, coerceRange(latestFresh.range), newVersion);
         await vscode.workspace.applyEdit(edit);
         codeLensProvider.refresh();
       }
@@ -134,6 +140,8 @@ export function activate(context: vscode.ExtensionContext) {
           return;
         }
         const documentUri = uri instanceof vscode.Uri ? uri : vscode.Uri.parse(String(uri));
+        const document = await vscode.workspace.openTextDocument(documentUri);
+        const freshByKey = indexPackages(provider.parseDocument(document));
         const edit = new vscode.WorkspaceEdit();
 
         const sortedUpdates = [...updates].sort(
@@ -144,8 +152,15 @@ export function activate(context: vscode.ExtensionContext) {
           if (!latestVersion) {
             continue;
           }
-          const newVersion = provider.formatUpdatedVersion(info.currentVersion, latestVersion);
-          edit.replace(documentUri, coerceRange(info.range), newVersion);
+          const fresh = freshByKey.get(packageKey(info));
+          if (!fresh) {
+            continue;
+          }
+          if (provider.shouldSkipVersion?.(fresh.currentVersion)) {
+            continue;
+          }
+          const newVersion = provider.formatUpdatedVersion(fresh.currentVersion, latestVersion);
+          edit.replace(documentUri, coerceRange(fresh.range), newVersion);
         }
 
         await vscode.workspace.applyEdit(edit);
@@ -182,6 +197,29 @@ function coerceRange(range: vscode.Range | { start: { line: number; character: n
   return new vscode.Range(
     new vscode.Position(range.start.line, range.start.character),
     new vscode.Position(range.end.line, range.end.character)
+  );
+}
+
+function packageKey(info: Pick<PackageInfo, "name" | "dependencyGroup">): string {
+  return `${info.dependencyGroup ?? ""}::${info.name}`;
+}
+
+function indexPackages(packages: PackageInfo[]): Map<string, PackageInfo> {
+  const map = new Map<string, PackageInfo>();
+  for (const pkg of packages) {
+    map.set(packageKey(pkg), pkg);
+  }
+  return map;
+}
+
+function findFreshPackage(
+  provider: LanguageProvider,
+  document: vscode.TextDocument,
+  info: PackageInfo
+): PackageInfo | undefined {
+  const packages = provider.parseDocument(document);
+  return packages.find(
+    (pkg) => pkg.name === info.name && pkg.dependencyGroup === info.dependencyGroup
   );
 }
 

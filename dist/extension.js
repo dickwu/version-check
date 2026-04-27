@@ -48,23 +48,28 @@ const registry_1 = require("./providers/npm/registry");
 const registry_2 = require("./providers/cargo/registry");
 const registry_3 = require("./providers/go/registry");
 const registry_4 = require("./providers/composer/registry");
+const dart_1 = require("./providers/dart");
+const registry_5 = require("./providers/dart/registry");
 const PROVIDER_SELECTORS = {
     npm: [{ pattern: "**/package.json" }],
     cargo: [{ pattern: "**/Cargo.toml" }],
     go: [{ pattern: "**/go.mod" }],
-    composer: [{ pattern: "**/composer.json" }]
+    composer: [{ pattern: "**/composer.json" }],
+    dart: [{ pattern: "**/pubspec.yaml" }]
 };
 function setAllRegistryCacheTtl(ttlMs) {
     (0, registry_1.setNpmCacheTtl)(ttlMs);
     (0, registry_2.setCargoCacheTtl)(ttlMs);
     (0, registry_3.setGoCacheTtl)(ttlMs);
     (0, registry_4.setComposerCacheTtl)(ttlMs);
+    (0, registry_5.setDartCacheTtl)(ttlMs);
 }
 function clearAllRegistryCaches() {
     (0, registry_1.clearNpmCache)();
     (0, registry_2.clearCargoCache)();
     (0, registry_3.clearGoCache)();
     (0, registry_4.clearComposerCache)();
+    (0, registry_5.clearDartCache)();
 }
 function ensureGlyphMargin() {
     const editorConfig = vscode.workspace.getConfiguration("editor");
@@ -83,7 +88,8 @@ function activate(context) {
         new npm_1.NpmProvider(),
         new cargo_1.CargoProvider(),
         new go_1.GoProvider(),
-        new composer_1.ComposerProvider()
+        new composer_1.ComposerProvider(),
+        new dart_1.DartProvider()
     ];
     const enabledProviders = allProviders.filter((provider) => {
         const enabled = providersConfig[provider.id];
@@ -114,13 +120,19 @@ function activate(context) {
             return;
         }
         const documentUri = uri instanceof vscode.Uri ? uri : vscode.Uri.parse(String(uri));
-        const chosenVersion = await pickVersion(provider, info, latest);
+        const document = await vscode.workspace.openTextDocument(documentUri);
+        const fresh = findFreshPackage(provider, document, info);
+        if (!fresh) {
+            return;
+        }
+        const chosenVersion = await pickVersion(provider, fresh, latest);
         if (!chosenVersion) {
             return;
         }
-        const newVersion = provider.formatUpdatedVersion(info.currentVersion, chosenVersion);
+        const latestFresh = findFreshPackage(provider, document, info) ?? fresh;
+        const newVersion = provider.formatUpdatedVersion(latestFresh.currentVersion, chosenVersion);
         const edit = new vscode.WorkspaceEdit();
-        edit.replace(documentUri, coerceRange(info.range), newVersion);
+        edit.replace(documentUri, coerceRange(latestFresh.range), newVersion);
         await vscode.workspace.applyEdit(edit);
         codeLensProvider.refresh();
     }));
@@ -130,14 +142,23 @@ function activate(context) {
             return;
         }
         const documentUri = uri instanceof vscode.Uri ? uri : vscode.Uri.parse(String(uri));
+        const document = await vscode.workspace.openTextDocument(documentUri);
+        const freshByKey = indexPackages(provider.parseDocument(document));
         const edit = new vscode.WorkspaceEdit();
         const sortedUpdates = [...updates].sort((a, b) => b.info.range.start.line - a.info.range.start.line);
         for (const { info, latestVersion } of sortedUpdates) {
             if (!latestVersion) {
                 continue;
             }
-            const newVersion = provider.formatUpdatedVersion(info.currentVersion, latestVersion);
-            edit.replace(documentUri, coerceRange(info.range), newVersion);
+            const fresh = freshByKey.get(packageKey(info));
+            if (!fresh) {
+                continue;
+            }
+            if (provider.shouldSkipVersion?.(fresh.currentVersion)) {
+                continue;
+            }
+            const newVersion = provider.formatUpdatedVersion(fresh.currentVersion, latestVersion);
+            edit.replace(documentUri, coerceRange(fresh.range), newVersion);
         }
         await vscode.workspace.applyEdit(edit);
         codeLensProvider.refresh();
@@ -159,6 +180,20 @@ function coerceRange(range) {
         return range;
     }
     return new vscode.Range(new vscode.Position(range.start.line, range.start.character), new vscode.Position(range.end.line, range.end.character));
+}
+function packageKey(info) {
+    return `${info.dependencyGroup ?? ""}::${info.name}`;
+}
+function indexPackages(packages) {
+    const map = new Map();
+    for (const pkg of packages) {
+        map.set(packageKey(pkg), pkg);
+    }
+    return map;
+}
+function findFreshPackage(provider, document, info) {
+    const packages = provider.parseDocument(document);
+    return packages.find((pkg) => pkg.name === info.name && pkg.dependencyGroup === info.dependencyGroup);
 }
 function getIgnorePatterns() {
     const config = vscode.workspace.getConfiguration("versionCheck");
