@@ -63,14 +63,26 @@ jobs:
 
       - name: Publish to VS Code Marketplace
         if: ${{ github.event_name == 'push' || inputs.target == 'both' || inputs.target == 'vscode' }}
+        continue-on-error: true
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           PKG_VERSION: ${{ steps.pkg.outputs.version }}
-        run: bun x @vscode/vsce publish --packagePath "version-check-$PKG_VERSION.vsix" --pat "$VSCE_PAT" --no-dependencies
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::warning::VSCE_PAT secret not set; skipping VS Code Marketplace"
+            exit 0
+          fi
+          bun x @vscode/vsce publish --packagePath "version-check-$PKG_VERSION.vsix" --pat "$VSCE_PAT" --no-dependencies
 
       - name: Publish to Open VSX
         if: ${{ github.event_name == 'push' || inputs.target == 'both' || inputs.target == 'openvsx' }}
+        continue-on-error: true
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
           PKG_VERSION: ${{ steps.pkg.outputs.version }}
-        run: bun x ovsx publish "version-check-$PKG_VERSION.vsix" -p "$OVSX_PAT"
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::warning::OVSX_PAT secret not set; skipping Open VSX"
+            exit 0
+          fi
+          bun x ovsx publish "version-check-$PKG_VERSION.vsix" -p "$OVSX_PAT"
