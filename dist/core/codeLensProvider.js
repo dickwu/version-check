@@ -37,6 +37,54 @@ exports.VersionCodeLensProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const semver_1 = require("../utils/semver");
 const CACHE_NOT_FOUND = "__NOT_FOUND__";
+/** Colors per update level (also used for inline annotation text). */
+const LEVEL_COLORS = {
+    latest: "#4ade80",
+    patch: "#fbbf24",
+    minor: "#fb923c",
+    major: "#f87171",
+    grey: "#9ca3af"
+};
+/** Human-readable label per update level, shown in the inline annotation. */
+const UPDATE_LEVEL_LABELS = {
+    latest: "Up to date",
+    patch: "Patch Update",
+    minor: "Minor Update",
+    major: "Major Update"
+};
+function buildTextDecoration(range, contentText, hover) {
+    return {
+        range,
+        hoverMessage: hover,
+        renderOptions: {
+            after: { contentText }
+        }
+    };
+}
+/** Build a clickable command link shown when hovering the inline annotation. */
+function buildUpdateHover(documentUri, providerId, info, latestVersion) {
+    const directArgs = encodeURIComponent(JSON.stringify([documentUri.toString(), providerId, info, latestVersion, true]));
+    const pickArgs = encodeURIComponent(JSON.stringify([documentUri.toString(), providerId, info, latestVersion, false]));
+    const md = new vscode.MarkdownString(`[$(arrow-up) Update ${info.name} to ${latestVersion}](command:versionCheck.updateDependency?${directArgs})  \n` +
+        `[$(list-selection) Choose version…](command:versionCheck.updateDependency?${pickArgs})`);
+    md.isTrusted = true;
+    md.supportThemeIcons = true;
+    return md;
+}
+function emptyDecorations() {
+    return {
+        green: [],
+        yellow: [],
+        orange: [],
+        red: [],
+        grey: [],
+        latestText: [],
+        patchText: [],
+        minorText: [],
+        majorText: [],
+        greyText: []
+    };
+}
 class VersionCodeLensProvider {
     constructor(providers, cache, extensionContext) {
         this.providers = providers;
@@ -82,8 +130,14 @@ class VersionCodeLensProvider {
         });
         this.greenDeco = this.createDotDecoration("resources/gutter-green.svg");
         this.yellowDeco = this.createDotDecoration("resources/gutter-yellow.svg");
+        this.orangeDeco = this.createDotDecoration("resources/gutter-orange.svg");
         this.redDeco = this.createDotDecoration("resources/gutter-red.svg");
         this.greyDeco = this.createDotDecoration("resources/gutter-grey.svg");
+        this.latestTextDeco = this.createTextDecoration(LEVEL_COLORS.latest);
+        this.patchTextDeco = this.createTextDecoration(LEVEL_COLORS.patch);
+        this.minorTextDeco = this.createTextDecoration(LEVEL_COLORS.minor);
+        this.majorTextDeco = this.createTextDecoration(LEVEL_COLORS.major);
+        this.greyTextDeco = this.createTextDecoration(LEVEL_COLORS.grey);
         this.editorListener = vscode.window.onDidChangeActiveTextEditor((editor) => {
             if (editor) {
                 this.reapplyDecorations(editor);
@@ -97,30 +151,46 @@ class VersionCodeLensProvider {
             gutterIconSize: "60%"
         });
     }
+    /** Inline colored text shown at the end of a dependency line. */
+    createTextDecoration(color) {
+        return vscode.window.createTextEditorDecorationType({
+            after: {
+                color,
+                margin: "0 0 0 1rem"
+            },
+            rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+        });
+    }
+    setEditorDecorations(editor, decos) {
+        editor.setDecorations(this.greenDeco, decos.green);
+        editor.setDecorations(this.yellowDeco, decos.yellow);
+        editor.setDecorations(this.orangeDeco, decos.orange);
+        editor.setDecorations(this.redDeco, decos.red);
+        editor.setDecorations(this.greyDeco, decos.grey);
+        editor.setDecorations(this.latestTextDeco, decos.latestText);
+        editor.setDecorations(this.patchTextDeco, decos.patchText);
+        editor.setDecorations(this.minorTextDeco, decos.minorText);
+        editor.setDecorations(this.majorTextDeco, decos.majorText);
+        editor.setDecorations(this.greyTextDeco, decos.greyText);
+    }
+    clearEditorDecorations(editor) {
+        this.setEditorDecorations(editor, emptyDecorations());
+    }
     reapplyDecorations(editor) {
         const uri = editor.document.uri.toString();
-        const ranges = this.decorationRanges.get(uri);
-        if (!ranges) {
-            editor.setDecorations(this.greenDeco, []);
-            editor.setDecorations(this.yellowDeco, []);
-            editor.setDecorations(this.redDeco, []);
-            editor.setDecorations(this.greyDeco, []);
+        const decos = this.decorationRanges.get(uri);
+        if (!decos) {
+            this.clearEditorDecorations(editor);
             return;
         }
-        editor.setDecorations(this.greenDeco, ranges.green);
-        editor.setDecorations(this.yellowDeco, ranges.yellow);
-        editor.setDecorations(this.redDeco, ranges.red);
-        editor.setDecorations(this.greyDeco, ranges.grey);
+        this.setEditorDecorations(editor, decos);
     }
-    applyDecorations(document, green, yellow, red, grey) {
+    applyDecorations(document, decos) {
         const uri = document.uri.toString();
-        this.decorationRanges.set(uri, { green, yellow, red, grey });
+        this.decorationRanges.set(uri, decos);
         const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
         if (editor) {
-            editor.setDecorations(this.greenDeco, green);
-            editor.setDecorations(this.yellowDeco, yellow);
-            editor.setDecorations(this.redDeco, red);
-            editor.setDecorations(this.greyDeco, grey);
+            this.setEditorDecorations(editor, decos);
         }
     }
     /** Invalidate all cached data for lines after a certain point */
@@ -146,8 +216,14 @@ class VersionCodeLensProvider {
         this.emitter.dispose();
         this.greenDeco.dispose();
         this.yellowDeco.dispose();
+        this.orangeDeco.dispose();
         this.redDeco.dispose();
         this.greyDeco.dispose();
+        this.latestTextDeco.dispose();
+        this.patchTextDeco.dispose();
+        this.minorTextDeco.dispose();
+        this.majorTextDeco.dispose();
+        this.greyTextDeco.dispose();
         this.documentStates.clear();
         this.changedLines.clear();
         this.forceFullRefresh.clear();
@@ -181,10 +257,7 @@ class VersionCodeLensProvider {
         const lenses = [];
         const sectionUpdates = new Map();
         const ignorePatterns = this.getIgnorePatterns();
-        const greenRanges = [];
-        const yellowRanges = [];
-        const redRanges = [];
-        const greyRanges = [];
+        const decos = emptyDecorations();
         // Get or create document state
         let state = this.documentStates.get(uri);
         const isFullRefresh = this.forceFullRefresh.has(uri) || !state;
@@ -234,38 +307,44 @@ class VersionCodeLensProvider {
             if (resolved.notFound) {
                 info.updateAvailable = false;
                 const decoLine = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
-                greyRanges.push(decoLine);
-                lenses.push(new vscode.CodeLens(info.range, {
-                    title: `⚠ Version not found for ${info.name}`,
-                    command: "versionCheck.updateDependency",
-                    arguments: [document.uri, provider.id, info, undefined]
-                }));
+                decos.grey.push(decoLine);
+                const nfEnd = document.lineAt(line).range.end;
+                decos.greyText.push(buildTextDecoration(new vscode.Range(nfEnd, nfEnd), `⚠ Version not found`));
                 continue;
             }
             if (!resolved.latestVersion) {
                 const decoLine = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
-                greyRanges.push(decoLine);
+                decos.grey.push(decoLine);
                 continue;
             }
             const updateAvailable = (0, semver_1.isVersionOutdated)(info.currentVersion, resolved.latestVersion);
             const decoRange = new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER);
+            // Anchor inline text to the end of the line so it renders after the code.
+            const lineEnd = document.lineAt(line).range.end;
+            const textRange = new vscode.Range(lineEnd, lineEnd);
             if (!updateAvailable) {
-                greenRanges.push(decoRange);
-                lenses.push(new vscode.CodeLens(info.range, {
-                    title: `✓ Latest (${resolved.latestVersion})`,
-                    command: "versionCheck.updateDependency",
-                    arguments: [document.uri, provider.id, info, resolved.latestVersion]
-                }));
+                // Up-to-date: status is shown by the inline colored annotation only.
+                // No CodeLens (would just repeat the info on the line above).
+                decos.green.push(decoRange);
+                decos.latestText.push(buildTextDecoration(textRange, `✓ Up to date (${resolved.latestVersion})`));
                 continue;
             }
             info.latestVersion = resolved.latestVersion;
             info.updateAvailable = true;
             const diffLevel = (0, semver_1.getVersionDiffLevel)(info.currentVersion, resolved.latestVersion);
+            const levelLabel = UPDATE_LEVEL_LABELS[diffLevel];
+            const annotation = buildTextDecoration(textRange, `↑ Update to ${resolved.latestVersion} — ${levelLabel}`, buildUpdateHover(document.uri, provider.id, info, resolved.latestVersion));
             if (diffLevel === "major") {
-                redRanges.push(decoRange);
+                decos.red.push(decoRange);
+                decos.majorText.push(annotation);
+            }
+            else if (diffLevel === "minor") {
+                decos.orange.push(decoRange);
+                decos.minorText.push(annotation);
             }
             else {
-                yellowRanges.push(decoRange);
+                decos.yellow.push(decoRange);
+                decos.patchText.push(annotation);
             }
             const section = info.dependencyGroup ?? "default";
             if (!sectionUpdates.has(section)) {
@@ -276,11 +355,11 @@ class VersionCodeLensProvider {
             if (info.range.start.line < sectionData.firstLine) {
                 sectionData.firstLine = info.range.start.line;
             }
-            lenses.push(new vscode.CodeLens(info.range, {
-                title: `Choose version (latest ${resolved.latestVersion})`,
-                command: "versionCheck.updateDependency",
-                arguments: [document.uri, provider.id, info, resolved.latestVersion]
-            }));
+            // No per-package CodeLens: the inline colored annotation at the end of
+            // the line already shows the version + level, and single-package updates
+            // are available via the Quick Fix lightbulb (Cmd+.). This keeps each
+            // dependency on a single line. A section-level "Update all" lens is still
+            // added below.
         }
         // Clean up stale entries from state (packages that no longer exist)
         const currentLines = new Set(packages.map(p => p.range.start.line));
@@ -305,7 +384,7 @@ class VersionCodeLensProvider {
                 arguments: [document.uri, provider.id, updates]
             }));
         }
-        this.applyDecorations(document, greenRanges, yellowRanges, redRanges, greyRanges);
+        this.applyDecorations(document, decos);
         return lenses;
     }
     /** Resolve a single package's latest version */
